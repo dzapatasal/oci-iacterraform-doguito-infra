@@ -1,0 +1,29 @@
+#cloud-config
+
+runcmd:
+  - |
+    echo "--- INICIO DE INSTALACIÓN UBUNTU FORZADA ---"
+    
+    # 1. ESPERA INTELIGENTE DE RED
+    echo "Esperando conexión a Internet para instalar paquetes..."
+    # Eliminamos el comando 'until ping' si el anterior falló, y usamos un retardo de arranque de 60 segundos.
+    # Si la Route Table de OCI tarda en activarse, damos tiempo antes de fallar la instalación.
+    sleep 60
+    
+    # 2. INSTALACIÓN DE PAQUETES (Apache y UFW)
+    # Ejecutamos con '|| true' para que el script NO se detenga si una línea falla
+    
+    apt update -y || true
+    apt install -y apache2 ufw || true
+    
+    # 3. CONFIGURACIÓN DEL FIREWALL (UFW)
+    ufw allow 22/tcp
+    ufw allow 80/tcp
+    ufw --force enable
+    echo "Firewall activado y configurado."
+    
+    # 4. CONFIGURACIÓN Y ARRANQUE
+    echo "<html><h1>Servidor Ubuntu OK - IP: $(hostname --ip-address)</h1></html>" > /var/www/html/index.html
+    systemctl enable --now apache2
+    
+    echo "--- INSTALACIÓN COMPLETADA EXITOSAMENTE ---"

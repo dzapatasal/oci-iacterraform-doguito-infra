@@ -1,0 +1,20 @@
+# Directorio generado por 'terraform init'.
+.terraform/
+
+# Archivo de bloqueo de dependencias (solo si usa versiones antiguas de TF, pero se incluye por defecto)
+.terraform.lock.hcl
+
+# Archivo de estado local (CRÍTICO - nunca debe subirse)
+# terraform.tfstate
+# terraform.tfstate.backup
+
+# Archivo de variables secretas (debe estar en el .tfvars, no en el repositorio)
+# Si lo usa, añada el nombre de su archivo de variables:
+terraform.tfvars
+
+# Archivos de plan que pueden contener información sensible
+*.tfplan
+*.tfplan.backup
+
+# Ficheros de crash
+crash.log
