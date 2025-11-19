@@ -1,0 +1,33 @@
+#cloud-config
+yum_repos:
+    epel-testing:
+        baseurl: https://yum.oracle.com/repo/OracleLinux/OL7/developer_EPEL/$basearch/
+        enabled: true
+        failovermethod: priority
+        gpgcheck: true
+        gpgkey: file:///etc/pki/rpm-gpg/RPM-GPG-KEY-oracle
+        name: EPEL ($basearch)
+
+packages:
+  - git
+  - nodejs
+
+runcmd:
+  - [dnf, -y, install, oracle-instantclient-release-el8]
+  - [dnf, -y, install, oracle-instantclient-basic]
+  
+  # Clonamos el proyecto
+  - [git, -C, /home/opc, clone, https://github.com/HarlandLohora/doguito-app.git]
+  - [bash, -c, 'cd /home/opc/doguito-app && npm install']
+  
+  # URL Wallet 
+  - [wget, ???, -P, /usr/lib/oracle/21/client64/lib/network/admin]
+  - [sudo, sh, -c, 'cd /usr/lib/oracle/21/client64/lib/network/admin/ && unzip -B Wallet_*.zip']
+  
+  # URL doguito-site.service
+  - [wget, ???, -P, /lib/systemd/system]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, doguito-site.service]
+  - [systemctl, start, doguito-site.service]
+  - [firewall-offline-cmd, --add-port=3000/tcp]
+  - [systemctl, restart, firewalld]
