@@ -6,7 +6,7 @@ data "template_file" "user_data" {
 resource "oci_core_instance" "dps-server-01" {
   availability_domain = data.oci_identity_availability_domains.ADs.availability_domains[var.AD -1]["name"]
   compartment_id      = var.compartment_ocid
-  display_name        = "dps-server-01"
+  display_name        = "dps-server-01" # f.n | "Web-Server-01"
   shape               = var.instance_shape
 
   create_vnic_details {
@@ -29,7 +29,7 @@ resource "oci_core_instance" "dps-server-01" {
  resource "oci_core_instance" "dps-server-02" {
    availability_domain = data.oci_identity_availability_domains.ADs.availability_domains[var.AD -1]["name"]
    compartment_id      = var.compartment_ocid
-   display_name        = "dps-server-02"
+   display_name        = "dps-server-02" # f.n | "Web-Server-02"
    shape               = var.instance_shape
  
    create_vnic_details {
@@ -48,3 +48,5 @@ resource "oci_core_instance" "dps-server-01" {
    }
  
  }
+
+# f.n : former name

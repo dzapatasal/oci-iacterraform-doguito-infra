@@ -8,10 +8,10 @@ After=network.target
 
 [Service]
 Environment="DB_USER=ADMIN"
-Environment="DB_PASSWORD=Doguito12345"
+Environment="DB_PASSWORD=DBChiquiful1"
 Environment="CONNECT_STRING=doguitodb_high"
 Type=simple
-User=opc
+User=ubuntu
 ExecStart=/usr/bin/node /home/opc/doguito-app/bin/www
 Restart=on-failure
 

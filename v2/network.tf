@@ -46,31 +46,34 @@ resource "oci_core_security_list" "securitylist" {
   }
 
   ingress_security_rules {
+    # 1. Tráfico desde el exterior (Internet - 0.0.0.0/0) al puerto 80
     protocol = "6"
     source   = "0.0.0.0/0"
-
+    source_type = "CIDR_BLOCK" # Asegúrate de que esto está en tu archivo
     tcp_options {
       min = 80
       max = 80
     }
   }
 
+  # 2. Tráfico desde el exterior (Internet - 0.0.0.0/0) al puerto 22 (SSH)
   ingress_security_rules {
     protocol = "6"
     source   = "0.0.0.0/0"
-
+    source_type = "CIDR_BLOCK" # Asegúrate de que esto está en tu archivo
     tcp_options {
       min = 22
       max = 22
     }
   }
 
+  # 3. Tráfico INTERNO de la VCN al puerto 80 (Para el Health Checker del Load Balancer)
   ingress_security_rules {
     protocol = "6"
-    source   = "0.0.0.0/0"
-
+    source   = var.vcn_cidr # Permite a cualquier IP de la VCN (incluido el LB) acceder al 80
+    source_type = "CIDR_BLOCK" 
     tcp_options {
-      min = 3000
+      min = 3000 # Cambio de puerto (anteriormente 80)
       max = 3000
     }
   }

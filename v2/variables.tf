@@ -28,10 +28,10 @@ variable "dns_label" {
 # OS Image
 
 variable "image_operating_system" {
-  default = "Oracle Linux"
+  default = "Canonical Ubuntu" # Nombre exacto para el buscador de imágenes de OCI
 }
 variable "image_operating_system_version" {
-  default = "8"
+  default = "22.04" # Versión estable LTS
 }
 
 ### Compute Shape
@@ -44,7 +44,7 @@ variable "instance_shape" {
 # Load Balancer Shape
 
 variable "load_balancer_min_band" {
-  description = "Load Balancer Max Band"
+  description = "Load Balancer Min Band"
   default     = "10"
 }
 
