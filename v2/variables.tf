@@ -38,7 +38,7 @@ variable "image_operating_system_version" {
 
 variable "instance_shape" {
   description = "Instance Shape"
-  default     = "VM.Standard.E2.1.Micro"
+  default     = "VM.Standard.A1.Flex"
 }
 
 # Load Balancer Shape

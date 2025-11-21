@@ -9,6 +9,12 @@ resource "oci_core_instance" "dps-server-01" {
   display_name        = "dps-server-01" # f.n | "Web-Server-01"
   shape               = var.instance_shape
 
+  shape_config {
+    ocpus         = 1
+    memory_in_gbs = 6 
+  }
+
+
   create_vnic_details {
     subnet_id = oci_core_subnet.subnet.id
     display_name = "primaryvnic"
@@ -31,6 +37,11 @@ resource "oci_core_instance" "dps-server-01" {
    compartment_id      = var.compartment_ocid
    display_name        = "dps-server-02" # f.n | "Web-Server-02"
    shape               = var.instance_shape
+
+   shape_config {
+    ocpus         = 1
+    memory_in_gbs = 6 
+  }
  
    create_vnic_details {
      subnet_id = oci_core_subnet.subnet.id

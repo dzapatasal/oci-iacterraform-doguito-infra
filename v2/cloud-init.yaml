@@ -2,31 +2,37 @@
 
 packages:
   - git
-  - unzip
   - wget
   - curl
-  - libaio1 # Dependencia de Oracle
-  - libnsl2 # Dependencia de Oracle
   - ca-certificates
+  
+  # CRÍTICO: Paquetes base movidos aquí para evitar problemas de 'apt lock'
+  - unzip
+  - libaio1         # Dependencia de Oracle
+  - libnsl2         # Dependencia de Oracle
   - build-essential # Necesario para que npm compile el driver de Oracle
+  
+  # Instalación de Node.js a través del repositorio oficial (runcmd) para versión 20.x
 
 runcmd:
   - |
-    echo "--- INICIO DE INSTALACIÓN Y DESPLIEGUE DOGUITO API (UBUNTU 22.04) ---"
+    echo "--- INICIO DE INSTALACIÓN Y DESPLIEGUE DOGUITO API (UBUNTU 22.04 ARM64) ---"
     
-    # 1. ACTUALIZACIÓN Y NODE.JS V20 (Eliminamos el conflicto de versión)
+    # 1. ACTUALIZACIÓN E INSTALACIÓN DE NODE.JS V20
     sleep 30
     apt update -y
     
-    echo "Instalando Node.js v20 (LTS)..."
+    echo "Paso 1: Instalando Node.js v20 (LTS)..."
+    # Añadimos el repositorio Nodesource para la versión 20 (LTS)
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get install -y nodejs
     
     # 2. INSTALACIÓN DE DEPENDENCIAS ORACLE (INSTANT CLIENT)
-    echo "Instalando dependencias de Oracle Instant Client..."
-    INSTANT_CLIENT_URL="https://download.oracle.com/otn_software/linux/instantclient/2120000/instantclient-basic-linux.x64-21.20.0.0.0dbru.zip"
+    echo "Paso 2: Instalando dependencias de Oracle Instant Client (V19 ARM64)..."
+    # CRÍTICO 1: URL Y PATHS para Instant Client 19 ARM64 (aarch64)
+    INSTANT_CLIENT_URL="https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-basic-linux.arm64-19.28.0.0.0dbru.zip"
     ZIP_FILE="/tmp/instantclient-basic.zip"
-    ORACLE_LIB_PATH="/usr/lib/oracle/21/client64/lib"
+    ORACLE_LIB_PATH="/usr/lib/oracle/19/client64/lib"
     
     curl -L -o $ZIP_FILE $INSTANT_CLIENT_URL
     
@@ -34,45 +40,65 @@ runcmd:
     unzip -o $ZIP_FILE -d $ORACLE_LIB_PATH
     
     cd $ORACLE_LIB_PATH
-    ln -s libclntsh.so.21.1 libclntsh.so
-    
-    ldconfig # <--- CRÍTICO: Soluciona el error DPI-1047.
+    ln -s libclntsh.so.19.1 libclntsh.so
+
+    # Configuración global del sistema operativo para librerías
+    echo "$ORACLE_LIB_PATH" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+    ldconfig
     
     # 3. CONFIGURACIÓN DE LA WALLET (DB)
-    echo "Configurando la Wallet..."
-    WALLET_PATH="/usr/lib/oracle/21/client64/lib/network/admin"
+    echo "Paso 3: Configurando la Wallet..."
+    WALLET_PATH="/usr/lib/oracle/19/client64/lib/network/admin" # CRÍTICO: Path de la V19
     
     mkdir -p $WALLET_PATH
     
-    # Descarga desde tu bucket público
-    wget -q -O $WALLET_PATH/Wallet_DOGUITODB.zip https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-20251120-1839/o/Wallet_DOGUITODB.zip
+    # Usando la URL de tu bucket para la Wallet
+    wget -q -O $WALLET_PATH/Wallet_DOGUITODB.zip https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-arm/o/Wallet_DOGUITODB.zip
     
     unzip -o $WALLET_PATH/Wallet_DOGUITODB.zip -d $WALLET_PATH/
+
+    # CORRECCIÓN DE PERMISOS
+    echo "Corrigiendo permisos de Oracle Client y Wallet..."
+    chown -R ubuntu:ubuntu /usr/lib/oracle
+    chmod -R 755 $ORACLE_LIB_PATH 
+    chmod -R 755 $WALLET_PATH
     
     # 4. DESPLIEGUE DE LA APLICACIÓN NODE.JS
-    echo "Desplegando la aplicación Node.js..."
+    echo "Paso 4: Clonando e instalando la aplicación Node.js..."
     APP_DIR="/home/ubuntu/doguito-app"
     
     git clone https://github.com/HarlandLohora/doguito-app.git $APP_DIR
     
-    cd $APP_DIR
-    npm install --unsafe-perm
+    # Asegurar que el usuario 'ubuntu' sea el dueño
     chown -R ubuntu:ubuntu $APP_DIR
     
-    # 5. CONFIGURACIÓN DEL SERVICIO SYSTEMD
-    echo "Configurando el servicio SystemD..."
-    SERVICE_URL="https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-20251120-1839/o/doguito-site-v2.service"
-    SERVICE_FILE="/lib/systemd/system/doguito-site-v2.service"
+    cd $APP_DIR
     
-    # Descarga el archivo de servicio corregido desde tu bucket
+    # CRÍTICO 2: Bloque de comandos ejecutado como usuario 'ubuntu' para garantizar que las variables de entorno se usen correctamente durante 'npm install'
+    sudo -u ubuntu sh -c '
+      # CRÍTICO 3: Exportar variables para la COMPILACIÓN de oracledb (Solución NJS-067)
+      export LD_LIBRARY_PATH=/usr/lib/oracle/19/client64/lib
+      export TNS_ADMIN=/usr/lib/oracle/19/client64/lib/network/admin
+      
+      # Ejecutar la instalación
+      echo "Ejecutando npm install..."
+      npm install --unsafe-perm
+    '
+    
+    # 5. CONFIGURACIÓN DEL SERVICIO SYSTEMD
+    echo "Paso 5: Configurando el servicio SystemD..."
+    # Asegúrate de que la URL apunte a la versión V3/corregida
+    SERVICE_URL="https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-arm/o/doguito-site-v3.service"
+    SERVICE_FILE="/lib/systemd/system/doguito-site-v3.service"
+    
     wget -q -O $SERVICE_FILE $SERVICE_URL
     
     systemctl daemon-reload
-    systemctl enable doguito-site-v2.service
-    systemctl start doguito-site-v2.service
+    systemctl enable doguito-site-v3.service
+    systemctl start doguito-site-v3.service
     
     # 6. CONFIGURACIÓN DEL FIREWALL (UFW)
-    echo "Configurando Firewall..."
+    echo "Paso 6: Configurando Firewall..."
     ufw allow 22/tcp
     ufw allow 3000/tcp
     ufw --force enable
