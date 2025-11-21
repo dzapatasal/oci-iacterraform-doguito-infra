@@ -1,77 +1,80 @@
 #cloud-config
 
-# Instalación de paquetes necesarios
 packages:
   - git
-  - nodejs
-  - unzip # Necesario para descomprimir la Wallet
-  - wget  # Necesario para descargar archivos
-  - alien # Herramienta para convertir RPM a DEB (Necesario para Instant Client en Ubuntu)
+  - unzip
+  - wget
+  - curl
+  - libaio1 # Dependencia de Oracle
+  - libnsl2 # Dependencia de Oracle
+  - ca-certificates
+  - build-essential # Necesario para que npm compile el driver de Oracle
 
 runcmd:
   - |
     echo "--- INICIO DE INSTALACIÓN Y DESPLIEGUE DOGUITO API (UBUNTU 22.04) ---"
     
-    # 1. ESPERA DE RED
-    sleep 60
+    # 1. ACTUALIZACIÓN Y NODE.JS V20 (Eliminamos el conflicto de versión)
+    sleep 30
     apt update -y
     
-    # 2. INSTALACIÓN DE DEPENDENCIAS ESPECÍFICAS DE OCI (INSTANT CLIENT)
+    echo "Instalando Node.js v20 (LTS)..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
+    
+    # 2. INSTALACIÓN DE DEPENDENCIAS ORACLE (INSTANT CLIENT)
     echo "Instalando dependencias de Oracle Instant Client..."
+    INSTANT_CLIENT_URL="https://download.oracle.com/otn_software/linux/instantclient/2120000/instantclient-basic-linux.x64-21.20.0.0.0dbru.zip"
+    ZIP_FILE="/tmp/instantclient-basic.zip"
+    ORACLE_LIB_PATH="/usr/lib/oracle/21/client64/lib"
     
-    # URL del Instant Client (Versión 21, adaptable si se usa otra)
-    # Se descarga el paquete RPM genérico, que luego será convertido.
-    INSTANT_CLIENT_URL="https://download.oracle.com/otn_software/linux/instantclient/2114000/oracle-instantclient-basic-21.14.0.0.0dbru.x86_64.rpm"
-    RPM_FILE="/tmp/oracle-instantclient-basic.rpm"
+    curl -L -o $ZIP_FILE $INSTANT_CLIENT_URL
     
-    # 2a. Descargar el RPM
-    wget -q -O $RPM_FILE $INSTANT_CLIENT_URL
+    mkdir -p $ORACLE_LIB_PATH
+    unzip -o $ZIP_FILE -d $ORACLE_LIB_PATH
     
-    # 2b. Instalar usando alien (convierte RPM a DEB e instala)
-    # '-i' instala y '-c' convierte el paquete.
-    alien -i $RPM_FILE
+    cd $ORACLE_LIB_PATH
+    ln -s libclntsh.so.21.1 libclntsh.so
     
-    # 3. DESCARGA Y CONFIGURACIÓN DE LA WALLET (DB)
-    # La ruta de instalación del Instant Client en Ubuntu suele ser /usr/lib/oracle/21/client64/lib/network/admin
-    WALLET_PATH="/usr/lib/oracle/21/client64/lib/network/admin" 
+    ldconfig # <--- CRÍTICO: Soluciona el error DPI-1047.
     
-    echo "Creando directorio de Wallet y descargando..."
+    # 3. CONFIGURACIÓN DE LA WALLET (DB)
+    echo "Configurando la Wallet..."
+    WALLET_PATH="/usr/lib/oracle/21/client64/lib/network/admin"
+    
     mkdir -p $WALLET_PATH
     
-    # Descargar la Wallet ZIP desde Object Storage
-    wget -q -O $WALLET_PATH/Wallet_DOGUITODB.zip https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-doguito-app/o/Wallet_DOGUITODB.zip
+    # Descarga desde tu bucket público
+    wget -q -O $WALLET_PATH/Wallet_DOGUITODB.zip https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-20251120-1839/o/Wallet_DOGUITODB.zip
     
-    # Descomprimir la Wallet
-    echo "Descomprimiendo la Wallet..."
     unzip -o $WALLET_PATH/Wallet_DOGUITODB.zip -d $WALLET_PATH/
     
     # 4. DESPLIEGUE DE LA APLICACIÓN NODE.JS
+    echo "Desplegando la aplicación Node.js..."
     APP_DIR="/home/ubuntu/doguito-app"
     
-    echo "Clonando el repositorio de Doguito API..."
     git clone https://github.com/HarlandLohora/doguito-app.git $APP_DIR
     
-    echo "Instalando dependencias de Node.js..."
-    # Ejecutamos npm install dentro del directorio clonado
     cd $APP_DIR
-    npm install
+    npm install --unsafe-perm
+    chown -R ubuntu:ubuntu $APP_DIR
     
     # 5. CONFIGURACIÓN DEL SERVICIO SYSTEMD
-    SERVICE_URL="https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-doguito-app/o/doguito-site.service"
-    SERVICE_FILE="/lib/systemd/system/doguito-site.service"
+    echo "Configurando el servicio SystemD..."
+    SERVICE_URL="https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-20251120-1839/o/doguito-site-v2.service"
+    SERVICE_FILE="/lib/systemd/system/doguito-site-v2.service"
     
-    echo "Descargando y configurando el servicio SystemD..."
+    # Descarga el archivo de servicio corregido desde tu bucket
     wget -q -O $SERVICE_FILE $SERVICE_URL
     
-    # Recargar SystemD, habilitar y arrancar el servicio
     systemctl daemon-reload
-    systemctl enable doguito-site.service
-    systemctl start doguito-site.service
+    systemctl enable doguito-site-v2.service
+    systemctl start doguito-site-v2.service
     
-    # 6. CONFIGURACIÓN DEL FIREWALL INTERNO (UFW)
-    echo "Configurando UFW para el puerto 3000..."
+    # 6. CONFIGURACIÓN DEL FIREWALL (UFW)
+    echo "Configurando Firewall..."
     ufw allow 22/tcp
-    ufw allow 3000/tcp # Puerto de la API Node.js
+    ufw allow 3000/tcp
     ufw --force enable
     
-    echo "--- DESPLIEGUE AUTOMÁTICO DE DOGUITO API COMPLETADO ---"
+    echo "--- DESPLIEGUE AUTOMÁTICO COMPLETADO ---"

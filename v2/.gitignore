@@ -1,0 +1,5 @@
+# Directorio generado por 'terraform init'.
+.terraform/
+
+# Archivo de bloqueo de dependencias (solo si usa versiones antiguas de TF, pero se incluye por defecto)
+.terraform.lock.hcl
