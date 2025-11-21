@@ -6,8 +6,9 @@ After=network.target
 Environment="DB_USER=ADMIN"
 Environment="DB_PASSWORD=DBChiquiful1"
 Environment="CONNECT_STRING=doguitodb_high"
-Environment="LD_LIBRARY_PATH=/usr/lib/oracle/19/client64/lib"
-Environment="TNS_ADMIN=/usr/lib/oracle/19/client64/lib/network/admin" 
+# Rutas actualizadas según tu verificación:
+Environment="LD_LIBRARY_PATH=/usr/lib/oracle/19/client64/lib/instantclient_19_28"
+Environment="TNS_ADMIN=/usr/lib/oracle/19/client64/lib/instantclient_19_28/network/admin"
 Type=simple
 User=ubuntu
 ExecStart=/usr/bin/node /home/ubuntu/doguito-app/bin/www

@@ -6,13 +6,13 @@ packages:
   - curl
   - ca-certificates
   
-  # CRÍTICO: Paquetes base movidos aquí para evitar problemas de 'apt lock'
+  # Paquetes base para compilación y sistema
   - unzip
-  - libaio1         # Dependencia de Oracle
-  - libnsl2         # Dependencia de Oracle
-  - build-essential # Necesario para que npm compile el driver de Oracle
-  
-  # Instalación de Node.js a través del repositorio oficial (runcmd) para versión 20.x
+  - libaio1         
+  - libnsl2         
+  - build-essential 
+  - python3         
+  - python3-dev     
 
 runcmd:
   - |
@@ -23,81 +23,93 @@ runcmd:
     apt update -y
     
     echo "Paso 1: Instalando Node.js v20 (LTS)..."
-    # Añadimos el repositorio Nodesource para la versión 20 (LTS)
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get install -y nodejs
     
-    # 2. INSTALACIÓN DE DEPENDENCIAS ORACLE (INSTANT CLIENT)
+    # 2. INSTALACIÓN DE DEPENDENCIAS ORACLE (INSTANT CLIENT BASIC + SDK)
     echo "Paso 2: Instalando dependencias de Oracle Instant Client (V19 ARM64)..."
-    # CRÍTICO 1: URL Y PATHS para Instant Client 19 ARM64 (aarch64)
-    INSTANT_CLIENT_URL="https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-basic-linux.arm64-19.28.0.0.0dbru.zip"
-    ZIP_FILE="/tmp/instantclient-basic.zip"
-    ORACLE_LIB_PATH="/usr/lib/oracle/19/client64/lib"
     
-    curl -L -o $ZIP_FILE $INSTANT_CLIENT_URL
+    BASIC_URL="https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-basic-linux.arm64-19.28.0.0.0dbru.zip"
+    SDK_URL="https://download.oracle.com/otn_software/linux/instantclient/1928000/instantclient-sdk-linux.arm64-19.28.0.0.0dbru.zip"
     
-    mkdir -p $ORACLE_LIB_PATH
-    unzip -o $ZIP_FILE -d $ORACLE_LIB_PATH
+    ZIP_FILE_BASIC="/tmp/instantclient-basic.zip"
+    ZIP_FILE_SDK="/tmp/instantclient-sdk.zip"
     
-    cd $ORACLE_LIB_PATH
+    # Directorio PADRE donde descargamos los ZIPs
+    ORACLE_PARENT="/usr/lib/oracle/19/client64/lib"
+    
+    # Directorio REAL creado por el ZIP (Validado por ti: instantclient_19_28)
+    ORACLE_HOME="$ORACLE_PARENT/instantclient_19_28"
+    
+    mkdir -p $ORACLE_PARENT
+    
+    # Descargar y extraer en el directorio padre
+    curl -L -o $ZIP_FILE_BASIC $BASIC_URL
+    unzip -o $ZIP_FILE_BASIC -d $ORACLE_PARENT
+    
+    curl -L -o $ZIP_FILE_SDK $SDK_URL
+    unzip -o $ZIP_FILE_SDK -d $ORACLE_PARENT
+    
+    # Entramos al directorio REAL para crear los enlaces
+    cd $ORACLE_HOME
     ln -s libclntsh.so.19.1 libclntsh.so
 
-    # Configuración global del sistema operativo para librerías
-    echo "$ORACLE_LIB_PATH" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+    # Configuración global del sistema operativo (ld.so) apuntando al directorio REAL
+    echo "$ORACLE_HOME" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
     ldconfig
     
     # 3. CONFIGURACIÓN DE LA WALLET (DB)
     echo "Paso 3: Configurando la Wallet..."
-    WALLET_PATH="/usr/lib/oracle/19/client64/lib/network/admin" # CRÍTICO: Path de la V19
+    # Guardamos la Wallet dentro de la estructura correcta
+    WALLET_PATH="$ORACLE_HOME/network/admin"
     
     mkdir -p $WALLET_PATH
     
-    # Usando la URL de tu bucket para la Wallet
     wget -q -O $WALLET_PATH/Wallet_DOGUITODB.zip https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-arm/o/Wallet_DOGUITODB.zip
     
     unzip -o $WALLET_PATH/Wallet_DOGUITODB.zip -d $WALLET_PATH/
 
-    # CORRECCIÓN DE PERMISOS
-    echo "Corrigiendo permisos de Oracle Client y Wallet..."
+    # CORRECCIÓN DE PERMISOS (Recursivo desde el padre para cubrir todo)
+    echo "Corrigiendo permisos..."
     chown -R ubuntu:ubuntu /usr/lib/oracle
-    chmod -R 755 $ORACLE_LIB_PATH 
-    chmod -R 755 $WALLET_PATH
+    chmod -R 755 /usr/lib/oracle
     
     # 4. DESPLIEGUE DE LA APLICACIÓN NODE.JS
     echo "Paso 4: Clonando e instalando la aplicación Node.js..."
     APP_DIR="/home/ubuntu/doguito-app"
     
     git clone https://github.com/HarlandLohora/doguito-app.git $APP_DIR
-    
-    # Asegurar que el usuario 'ubuntu' sea el dueño
     chown -R ubuntu:ubuntu $APP_DIR
     
-    cd $APP_DIR
-    
-    # CRÍTICO 2: Bloque de comandos ejecutado como usuario 'ubuntu' para garantizar que las variables de entorno se usen correctamente durante 'npm install'
+    # CRÍTICO: Compilación con las rutas validadas
     sudo -u ubuntu sh -c '
-      # CRÍTICO 3: Exportar variables para la COMPILACIÓN de oracledb (Solución NJS-067)
-      export LD_LIBRARY_PATH=/usr/lib/oracle/19/client64/lib
-      export TNS_ADMIN=/usr/lib/oracle/19/client64/lib/network/admin
+      cd /home/ubuntu/doguito-app
       
-      # Ejecutar la instalación
+      echo "Configurando entorno de compilación..."
+      # RUTAS EXACTAS OBTENIDAS DE TU COMANDO FIND:
+      export CXXFLAGS="-I/usr/lib/oracle/19/client64/lib/instantclient_19_28/sdk/include"
+      export LD_LIBRARY_PATH="/usr/lib/oracle/19/client64/lib/instantclient_19_28"
+      export TNS_ADMIN="/usr/lib/oracle/19/client64/lib/instantclient_19_28/network/admin"
+      
+      echo "--> Forzando actualización de oracledb a versión 6.6.0 (Compatible con ARM64)..."
+      npm install oracledb@6.6.0 --save
+
       echo "Ejecutando npm install..."
-      npm install --unsafe-perm
+      npm install --unsafe-perm --build-from-source
     '
     
     # 5. CONFIGURACIÓN DEL SERVICIO SYSTEMD
     echo "Paso 5: Configurando el servicio SystemD..."
-    # Asegúrate de que la URL apunte a la versión V3/corregida
-    SERVICE_URL="https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-arm/o/doguito-site-v3.service"
-    SERVICE_FILE="/lib/systemd/system/doguito-site-v3.service"
+    SERVICE_URL="https://objectstorage.sa-santiago-1.oraclecloud.com/n/axh7wbsx4kzt/b/bucket-arm/o/doguito-site-v4.service"
+    SERVICE_FILE="/lib/systemd/system/doguito-site-v4.service"
     
     wget -q -O $SERVICE_FILE $SERVICE_URL
     
     systemctl daemon-reload
-    systemctl enable doguito-site-v3.service
-    systemctl start doguito-site-v3.service
+    systemctl enable doguito-site-v4.service
+    systemctl start doguito-site-v4.service
     
-    # 6. CONFIGURACIÓN DEL FIREWALL (UFW)
+    # 6. CONFIGURACIÓN DEL FIREWALL
     echo "Paso 6: Configurando Firewall..."
     ufw allow 22/tcp
     ufw allow 3000/tcp
